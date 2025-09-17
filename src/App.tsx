@@ -1,15 +1,20 @@
 import React from 'react';
+import { useAuth } from './hooks/useAuth';
 import { useTodos } from './hooks/useTodos';
+import { Auth } from './components/Auth';
+import { Header } from './components/Header';
 import { TodoInput } from './components/TodoInput';
 import { TodoFilter } from './components/TodoFilter';
 import { TodoList } from './components/TodoList';
-import { ListTodo, Trash2 } from 'lucide-react';
+import { Trash2, Loader2 } from 'lucide-react';
 
 function App() {
+  const { user, loading: authLoading } = useAuth();
   const {
     todos,
     filter,
     stats,
+    loading: todosLoading,
     addTodo,
     updateTodo,
     toggleTodo,
@@ -18,19 +23,34 @@ function App() {
     setFilter,
   } = useTodos();
 
+  // 認証状態の読み込み中
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={48} className="mx-auto text-blue-500 animate-spin mb-4" />
+          <p className="text-gray-600">読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未認証の場合は認証画面を表示
+  if (!user) {
+    return <Auth />;
+  }
+
+  // 認証済みの場合はメインアプリを表示
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+      <Header />
+      
       <div className="container mx-auto px-4 py-8 max-w-2xl">
-        {/* ヘッダー */}
+        {/* ウェルカムメッセージ */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="p-3 bg-blue-500 rounded-xl shadow-lg">
-              <ListTodo size={28} className="text-white" />
-            </div>
-            <h1 className="text-3xl font-bold text-gray-800">Todo App</h1>
-            <h1 className="text-3xl font-bold text-gray-800">タスク管理アプリ</h1>
-          </div>
-          <p className="text-gray-600">シンプルで美しいタスク管理</p>
+          <p className="text-gray-600">
+            こんにちは！今日も効率的にタスクを管理しましょう
+          </p>
         </div>
 
         {/* 新しいタスク入力 */}
@@ -45,15 +65,25 @@ function App() {
           />
         </div>
 
+        {/* ローディング表示 */}
+        {todosLoading && (
+          <div className="text-center py-8">
+            <Loader2 size={32} className="mx-auto text-blue-500 animate-spin mb-2" />
+            <p className="text-gray-500">タスクを読み込み中...</p>
+          </div>
+        )}
+
         {/* タスクリスト */}
-        <div className="mb-6">
-          <TodoList
-            todos={todos}
-            onToggleTodo={toggleTodo}
-            onUpdateTodo={updateTodo}
-            onDeleteTodo={deleteTodo}
-          />
-        </div>
+        {!todosLoading && (
+          <div className="mb-6">
+            <TodoList
+              todos={todos}
+              onToggleTodo={toggleTodo}
+              onUpdateTodo={updateTodo}
+              onDeleteTodo={deleteTodo}
+            />
+          </div>
+        )}
 
         {/* 完了済みタスクをクリア */}
         {stats.completed > 0 && (
@@ -70,7 +100,7 @@ function App() {
 
         {/* フッター */}
         <footer className="mt-16 text-center text-gray-400 text-sm">
-          <p>© 2025 Todo App - シンプルで美しいタスク管理</p>
+          <p>© 2025 タスク管理アプリ - 安全で使いやすいタスク管理</p>
         </footer>
       </div>
     </div>

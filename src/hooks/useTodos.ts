@@ -1,68 +1,171 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { Todo, FilterType } from '../types/todo';
+import { useAuth } from './useAuth';
 
 export const useTodos = () => {
+  const { user } = useAuth();
   const [todos, setTodos] = useState<Todo[]>([]);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [loading, setLoading] = useState(false);
 
-  // ローカルストレージからデータを読み込み
-  useEffect(() => {
-    const savedTodos = localStorage.getItem('todos');
-    if (savedTodos) {
-      try {
-        const parsedTodos = JSON.parse(savedTodos);
-        setTodos(parsedTodos.map((todo: any) => ({
-          ...todo,
-          createdAt: new Date(todo.createdAt),
-          updatedAt: new Date(todo.updatedAt),
-        })));
-      } catch (error) {
-        console.error('Failed to parse todos from localStorage:', error);
-      }
+  // データベースからタスクを取得
+  const fetchTodos = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('todos')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedTodos: Todo[] = data.map(todo => ({
+        id: todo.id,
+        text: todo.text,
+        completed: todo.completed,
+        createdAt: new Date(todo.created_at),
+        updatedAt: new Date(todo.updated_at),
+      }));
+
+      setTodos(formattedTodos);
+    } catch (error) {
+      console.error('タスクの取得に失敗しました:', error);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
 
-  // ローカルストレージに保存
+  // ユーザーがログインしたらタスクを取得
   useEffect(() => {
-    localStorage.setItem('todos', JSON.stringify(todos));
-  }, [todos]);
+    if (user) {
+      fetchTodos();
+    } else {
+      setTodos([]);
+    }
+  }, [user]);
 
-  const addTodo = (text: string) => {
-    if (text.trim() === '') return;
-    
-    const newTodo: Todo = {
-      id: crypto.randomUUID(),
-      text: text.trim(),
-      completed: false,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    
-    setTodos(prev => [newTodo, ...prev]);
+  // タスクを追加
+  const addTodo = async (text: string) => {
+    if (!user || text.trim() === '') return;
+
+    try {
+      const { data, error } = await supabase
+        .from('todos')
+        .insert([
+          {
+            user_id: user.id,
+            text: text.trim(),
+            completed: false,
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newTodo: Todo = {
+        id: data.id,
+        text: data.text,
+        completed: data.completed,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at),
+      };
+
+      setTodos(prev => [newTodo, ...prev]);
+    } catch (error) {
+      console.error('タスクの追加に失敗しました:', error);
+    }
   };
 
-  const updateTodo = (id: string, text: string) => {
-    setTodos(prev => prev.map(todo => 
-      todo.id === id 
-        ? { ...todo, text: text.trim(), updatedAt: new Date() }
-        : todo
-    ));
+  // タスクを更新
+  const updateTodo = async (id: string, text: string) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('todos')
+        .update({ text: text.trim() })
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setTodos(prev => prev.map(todo => 
+        todo.id === id 
+          ? { ...todo, text: text.trim(), updatedAt: new Date() }
+          : todo
+      ));
+    } catch (error) {
+      console.error('タスクの更新に失敗しました:', error);
+    }
   };
 
-  const toggleTodo = (id: string) => {
-    setTodos(prev => prev.map(todo => 
-      todo.id === id 
-        ? { ...todo, completed: !todo.completed, updatedAt: new Date() }
-        : todo
-    ));
+  // タスクの完了状態を切り替え
+  const toggleTodo = async (id: string) => {
+    if (!user) return;
+
+    const todo = todos.find(t => t.id === id);
+    if (!todo) return;
+
+    try {
+      const { error } = await supabase
+        .from('todos')
+        .update({ completed: !todo.completed })
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setTodos(prev => prev.map(todo => 
+        todo.id === id 
+          ? { ...todo, completed: !todo.completed, updatedAt: new Date() }
+          : todo
+      ));
+    } catch (error) {
+      console.error('タスクの更新に失敗しました:', error);
+    }
   };
 
-  const deleteTodo = (id: string) => {
-    setTodos(prev => prev.filter(todo => todo.id !== id));
+  // タスクを削除
+  const deleteTodo = async (id: string) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('todos')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setTodos(prev => prev.filter(todo => todo.id !== id));
+    } catch (error) {
+      console.error('タスクの削除に失敗しました:', error);
+    }
   };
 
-  const clearCompleted = () => {
-    setTodos(prev => prev.filter(todo => !todo.completed));
+  // 完了済みタスクをすべて削除
+  const clearCompleted = async () => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('todos')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('completed', true);
+
+      if (error) throw error;
+
+      setTodos(prev => prev.filter(todo => !todo.completed));
+    } catch (error) {
+      console.error('完了済みタスクの削除に失敗しました:', error);
+    }
   };
 
   // フィルタリングされたタスク
@@ -88,6 +191,7 @@ export const useTodos = () => {
     todos: filteredTodos,
     filter,
     stats,
+    loading,
     addTodo,
     updateTodo,
     toggleTodo,
